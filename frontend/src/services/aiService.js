@@ -1,10 +1,9 @@
 import { supabase } from '../config/supabase.js'
-import { storageManager } from '../utils/StorageManager.js'
+import { settingsService } from './settingsService.js'
 
 /**
  * AI service for calling Supabase Edge Functions
- * AI config (provider, API key, model) is retrieved from IndexedDB
- * and passed to edge functions - NEVER stored in Supabase
+ * AI config (provider, API key, model) is retrieved from Supabase user_settings
  */
 class AIService {
   /**
@@ -15,8 +14,8 @@ class AIService {
    * @returns {Promise<Object>} Result from edge function with logType field
    */
   async smartLog(userInput, date, mealTime) {
-    // Get AI config from IndexedDB
-    const aiConfig = await storageManager.getAIConfig()
+    // Get AI config from backend
+    const aiConfig = await settingsService.getAIConfig()
     
     if (!aiConfig) {
       throw new Error('AI configuration not found. Please configure your AI provider in Settings.')
@@ -73,8 +72,8 @@ class AIService {
    * @returns {Promise<Object>} Result from edge function
    */
   async logFoodWithAI(userInput, date, mealTime) {
-    // Get AI config from IndexedDB
-    const aiConfig = await storageManager.getAIConfig()
+    // Get AI config from backend
+    const aiConfig = await settingsService.getAIConfig()
     
     if (!aiConfig) {
       throw new Error('AI configuration not found. Please configure your AI provider in Settings.')
@@ -107,8 +106,8 @@ class AIService {
    * @returns {Promise<Object>} Extracted nutrition data
    */
   async scanNutritionLabel(imageBase64, mimeType = 'image/jpeg') {
-    // Get AI config from IndexedDB
-    const aiConfig = await storageManager.getAIConfig()
+    // Get AI config from backend
+    const aiConfig = await settingsService.getAIConfig()
     
     if (!aiConfig) {
       throw new Error('AI configuration not found. Please configure your AI provider in Settings.')
@@ -183,7 +182,7 @@ class AIService {
    * @returns {Promise<boolean>}
    */
   async isConfigured() {
-    return storageManager.hasAIConfig()
+    return settingsService.isAIConfigured()
   }
 }
 

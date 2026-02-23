@@ -17,6 +17,31 @@ class Store {
         target_carbs: 200,
         target_fat: 65
       },
+      // User settings from backend
+      userSettings: {
+        // Theme
+        themeMode: 'system',
+        accentColor: '#10b981',
+        // AI Configuration
+        aiProvider: null,
+        aiModelName: null,
+        // Unit Preferences
+        weightUnit: 'lbs',
+        heightUnit: 'ft',
+        waterUnit: 'oz',
+        distanceUnit: 'mi',
+        // Quick Water Sizes (in ml)
+        quickWaterSize1: 236.588,
+        quickWaterSize2: 473.176,
+        quickWaterSize3: 709.765,
+        // User Profile
+        birthday: null,
+        sex: null,
+        heightCm: null,
+        // Fitness Experience
+        cardioExperience: 'none',
+        liftingExperience: 'none'
+      },
       dailySummary: null,
       mealTimeSummary: [],
       isLoading: false,
@@ -90,6 +115,24 @@ class Store {
     this.setState({ goals: { ...this.state.goals, ...goals } })
   }
 
+  /**
+   * Update user settings
+   * @param {Object} settings - Partial settings update
+   */
+  setUserSettings(settings) {
+    this.setState({ 
+      userSettings: { ...this.state.userSettings, ...settings } 
+    })
+  }
+
+  /**
+   * Get user settings
+   * @returns {Object} User settings
+   */
+  getUserSettings() {
+    return this.state.userSettings
+  }
+
   setDailySummary(summary) {
     this.setState({ dailySummary: summary })
   }
@@ -117,6 +160,61 @@ class Store {
   getSelectedDateString() {
     const date = this.state.selectedDate
     return date.toISOString().split('T')[0]
+  }
+
+  /**
+   * Get quick water sizes in user's preferred unit
+   * @returns {Array} Array of { ml, display, unit }
+   */
+  getQuickWaterSizes() {
+    const settings = this.state.userSettings
+    const unit = settings.waterUnit
+    const ML_PER_OZ = 29.5735
+    
+    return [
+      { 
+        ml: settings.quickWaterSize1, 
+        display: unit === 'oz' 
+          ? Math.round(settings.quickWaterSize1 / ML_PER_OZ) 
+          : Math.round(settings.quickWaterSize1),
+        unit 
+      },
+      { 
+        ml: settings.quickWaterSize2, 
+        display: unit === 'oz' 
+          ? Math.round(settings.quickWaterSize2 / ML_PER_OZ) 
+          : Math.round(settings.quickWaterSize2),
+        unit 
+      },
+      { 
+        ml: settings.quickWaterSize3, 
+        display: unit === 'oz' 
+          ? Math.round(settings.quickWaterSize3 / ML_PER_OZ) 
+          : Math.round(settings.quickWaterSize3),
+        unit 
+      }
+    ]
+  }
+
+  /**
+   * Get user's height in their preferred unit format
+   * @returns {Object} { cm, ft, in, unit } or null if not set
+   */
+  getHeightDisplay() {
+    const settings = this.state.userSettings
+    if (!settings.heightCm) return null
+    
+    const cm = settings.heightCm
+    const totalInches = cm / 2.54
+    const ft = Math.floor(totalInches / 12)
+    const inches = Math.round(totalInches % 12)
+    
+    return {
+      cm,
+      ft,
+      in: inches,
+      unit: settings.heightUnit
+    }
   }
 }
 

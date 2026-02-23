@@ -15,6 +15,7 @@ import FabSpeedDial from './components/common/FabSpeedDial.js'
 import BottomSheet from './components/common/BottomSheet.js'
 import AIModal from './components/common/AIModal.js'
 import EditLogModal from './components/common/EditLogModal.js'
+import WaterModal from './components/common/WaterModal.js'
 import Dashboard from './views/Dashboard.js'
 import Diary from './views/Diary.js'
 import Settings from './views/Settings.js'
@@ -27,6 +28,7 @@ let fabSpeedDial = null
 let bottomSheet = null
 let aiModal = null
 let editLogModal = null
+let waterModal = null
 
 /**
  * Main App class
@@ -109,6 +111,7 @@ class App {
       <div id="bottom-sheet-container"></div>
       <div id="ai-modal-container"></div>
       <div id="edit-log-modal-container"></div>
+      <div id="water-modal-container"></div>
       <div id="bottom-nav-container"></div>
       <input type="file" id="native-camera-input" accept="image/*" capture="environment" style="display: none;">
     `
@@ -138,6 +141,18 @@ class App {
     // Initialize Edit Log Modal
     editLogModal = new EditLogModal()
     editLogModal.mount(document.getElementById('edit-log-modal-container'))
+    
+    // Initialize Water Modal
+    waterModal = new WaterModal(() => this.handleWaterLogged())
+    waterModal.addStyles()
+    waterModal.mount(document.getElementById('water-modal-container'))
+    
+    // Listen for open water modal event
+    window.addEventListener('open-water-modal', () => {
+      if (waterModal) {
+        waterModal.open()
+      }
+    })
     
     // Set up camera input handler
     const cameraInput = document.getElementById('native-camera-input')
@@ -225,6 +240,20 @@ class App {
   openBottomSheet() {
     if (bottomSheet) {
       bottomSheet.open()
+    }
+  }
+
+  openWaterModal() {
+    if (waterModal) {
+      waterModal.open()
+    }
+  }
+
+  async handleWaterLogged() {
+    // Refresh the current view
+    if (this.currentView && this.currentView.init) {
+      await this.currentView.init()
+      this.currentView.mount(document.getElementById('main-view'))
     }
   }
 

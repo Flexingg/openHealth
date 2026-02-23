@@ -1,6 +1,7 @@
 import { store } from '../state/store.js'
 import { logService } from '../services/logService.js'
 import { goalsService } from '../services/goalsService.js'
+import { waterService } from '../services/waterService.js'
 import { router } from '../router/router.js'
 
 /**
@@ -14,6 +15,7 @@ class Dashboard {
     this.mealTimeSummary = []
     this.logsByMeal = {}
     this.expandedMeals = new Set()
+    this.waterTotal = { total_ml: 0, total_oz: 0 }
     this.swipeState = {
       startX: 0,
       currentX: 0,
@@ -27,17 +29,19 @@ class Dashboard {
     store.setLoading(true)
     
     try {
-      const [goals, dailySummary, mealTimeSummary, logsByMeal] = await Promise.all([
+      const [goals, dailySummary, mealTimeSummary, logsByMeal, waterTotal] = await Promise.all([
         goalsService.getGoals(date).catch(() => goalsService.getLatestGoals()),
         logService.getDailySummary(date).catch(() => null),
         logService.getMealTimeSummary(date).catch(() => []),
-        logService.getLogsGroupedByMeal(date).catch(() => ({}))
+        logService.getLogsGroupedByMeal(date).catch(() => ({})),
+        waterService.getDailyWaterTotal(date).catch(() => ({ total_ml: 0, total_oz: 0 }))
       ])
       
       this.goals = goals
       this.dailySummary = dailySummary
       this.mealTimeSummary = mealTimeSummary
       this.logsByMeal = logsByMeal
+      this.waterTotal = waterTotal
       
       if (goals) {
         store.setGoals({
@@ -116,16 +120,9 @@ class Dashboard {
           </div>
         </section>
         
-        <!-- Quick Trackers (placeholder for water/weight) -->
+        <!-- Quick Trackers (water/weight) -->
         <section class="quick-trackers">
-          <div class="tracker-card water">
-            <div class="tracker-icon-bg">💧</div>
-            <div class="tracker-header">
-              <span class="tracker-icon">💧</span>
-              <span class="tracker-label">Water</span>
-            </div>
-            <div class="tracker-value">0 <span class="tracker-unit">oz</span></div>
-          </div>
+          ${this.renderWaterCard()}
           <div class="tracker-card">
             <div class="tracker-icon-bg">⚖️</div>
             <div class="tracker-header">
@@ -220,6 +217,26 @@ class Dashboard {
           </div>
           <div class="meal-item-cal">${nutrition.calories} cal</div>
         </div>
+      </div>
+    `
+  }
+
+  renderWaterCard() {
+    const userSettings = store.getState().userSettings
+    const unit = userSettings.waterUnit || 'oz'
+    const total = unit === 'oz' 
+      ? Math.round(this.waterTotal?.total_oz || 0)
+      : Math.round(this.waterTotal?.total_ml || 0)
+    
+    return `
+      <div class="tracker-card water clickable" id="water-card">
+        <div class="tracker-icon-bg">💧</div>
+        <div class="tracker-header">
+          <span class="tracker-icon">💧</span>
+          <span class="tracker-label">Water</span>
+        </div>
+        <div class="tracker-value">${total} <span class="tracker-unit">${unit}</span></div>
+        <div class="tracker-tap-hint">Tap to log</div>
       </div>
     `
   }
@@ -348,6 +365,30 @@ class Dashboard {
           cursor: pointer;
           padding: 8px;
         }
+        /* Water card styles */
+        .tracker-card.water.clickable {
+          cursor: pointer;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .tracker-card.water.clickable:hover {
+          transform: translateY(-2px);
+          box-shadow: var(--md-elevation-2);
+        }
+        .tracker-card.water.clickable:active {
+          transform: translateY(0);
+        }
+        .tracker-tap-hint {
+          font-size: 0.625rem;
+          color: var(--md-text-secondary);
+          text-align: center;
+          margin-top: 4px;
+          opacity: 0.7;
+        }
+        @keyframes toastBounce {
+          0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+          50% { transform: translateX(-50%) translateY(2px); }
+          100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
       `
       document.head.appendChild(style)
     }
@@ -379,6 +420,15 @@ class Dashboard {
         router.navigate(`/log/${logId}`)
       })
     })
+    
+    // Water card click - open modal
+    const waterCard = document.getElementById('water-card')
+    if (waterCard) {
+      waterCard.addEventListener('click', () => {
+        // Dispatch custom event to open water modal
+        window.dispatchEvent(new CustomEvent('open-water-modal'))
+      })
+    }
     
     // Swipe-to-delete
     this.setupSwipeToDelete()

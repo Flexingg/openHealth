@@ -1,38 +1,52 @@
 import { get, set, del } from 'idb-keyval'
 
 /**
- * StorageManager handles secure local storage for AI configuration.
- * CRITICAL: AI API keys are NEVER sent to Supabase - they stay in IndexedDB.
+ * StorageManager handles local storage for temporary/cached data.
+ * Note: AI configuration has been moved to backend (user_settings table).
+ * This class is kept for potential future local caching needs.
  */
 class StorageManager {
+  // Legacy keys - kept for migration purposes
   static AI_PROVIDER_KEY = 'ai_provider'
   static AI_API_KEY_KEY = 'ai_api_key'
   static AI_MODEL_KEY = 'ai_model_name'
 
   /**
-   * Save AI configuration to IndexedDB
-   * @param {Object} config - AI configuration object
-   * @param {string} config.provider - 'openai', 'anthropic', or 'gemini'
-   * @param {string} config.apiKey - The API key
-   * @param {string} config.modelName - The model name/ID
+   * Clear any legacy AI configuration from IndexedDB
+   * Call this once after user migrates to backend-stored settings
    */
-  async saveAIConfig({ provider, apiKey, modelName }) {
+  async clearLegacyAIConfig() {
     try {
-      await set(StorageManager.AI_PROVIDER_KEY, provider)
-      await set(StorageManager.AI_API_KEY_KEY, apiKey)
-      await set(StorageManager.AI_MODEL_KEY, modelName)
+      await del(StorageManager.AI_PROVIDER_KEY)
+      await del(StorageManager.AI_API_KEY_KEY)
+      await del(StorageManager.AI_MODEL_KEY)
       return true
     } catch (error) {
-      console.error('Failed to save AI config:', error)
-      throw error
+      console.error('Failed to clear legacy AI config:', error)
+      return false
     }
   }
 
   /**
-   * Get AI configuration from IndexedDB
-   * @returns {Promise<Object|null>} AI configuration or null if not set
+   * Check if legacy AI config exists (for migration detection)
+   * @returns {Promise<boolean>}
    */
-  async getAIConfig() {
+  async hasLegacyAIConfig() {
+    try {
+      const provider = await get(StorageManager.AI_PROVIDER_KEY)
+      const apiKey = await get(StorageManager.AI_API_KEY_KEY)
+      const modelName = await get(StorageManager.AI_MODEL_KEY)
+      return !!(provider && apiKey && modelName)
+    } catch (error) {
+      return false
+    }
+  }
+
+  /**
+   * Get legacy AI config for migration purposes
+   * @returns {Promise<Object|null>}
+   */
+  async getLegacyAIConfig() {
     try {
       const provider = await get(StorageManager.AI_PROVIDER_KEY)
       const apiKey = await get(StorageManager.AI_API_KEY_KEY)
@@ -44,33 +58,56 @@ class StorageManager {
 
       return { provider, apiKey, modelName }
     } catch (error) {
-      console.error('Failed to get AI config:', error)
+      console.error('Failed to get legacy AI config:', error)
       return null
     }
   }
 
+  // ==========================================
+  // GENERAL PURPOSE STORAGE (for future use)
+  // ==========================================
+
   /**
-   * Clear all AI configuration from IndexedDB
+   * Save a value to IndexedDB
+   * @param {string} key - Storage key
+   * @param {any} value - Value to store
    */
-  async clearAIConfig() {
+  async set(key, value) {
     try {
-      await del(StorageManager.AI_PROVIDER_KEY)
-      await del(StorageManager.AI_API_KEY_KEY)
-      await del(StorageManager.AI_MODEL_KEY)
+      await set(key, value)
       return true
     } catch (error) {
-      console.error('Failed to clear AI config:', error)
+      console.error('Failed to save to storage:', error)
       throw error
     }
   }
 
   /**
-   * Check if AI configuration exists
-   * @returns {Promise<boolean>}
+   * Get a value from IndexedDB
+   * @param {string} key - Storage key
+   * @returns {Promise<any>}
    */
-  async hasAIConfig() {
-    const config = await this.getAIConfig()
-    return config !== null
+  async get(key) {
+    try {
+      return await get(key)
+    } catch (error) {
+      console.error('Failed to get from storage:', error)
+      return null
+    }
+  }
+
+  /**
+   * Delete a value from IndexedDB
+   * @param {string} key - Storage key
+   */
+  async delete(key) {
+    try {
+      await del(key)
+      return true
+    } catch (error) {
+      console.error('Failed to delete from storage:', error)
+      throw error
+    }
   }
 }
 

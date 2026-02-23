@@ -1,5 +1,5 @@
 import { store } from '../state/store.js'
-import { supabase } from '../config/supabase.js'
+import { settingsService } from '../services/settingsService.js'
 
 /**
  * Material You Theme Manager
@@ -60,11 +60,8 @@ class ThemeManager {
       }
     })
     
-    // Load theme from Supabase if user is logged in
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await this.loadThemeFromSupabase()
-    }
+    // Load theme from backend via settingsService
+    await this.loadThemeFromBackend()
     
     // Apply initial theme
     this.applyTheme(store.getState().theme)
@@ -72,43 +69,46 @@ class ThemeManager {
   }
 
   /**
-   * Load theme settings from Supabase
+   * Load theme settings from backend via settingsService
    */
-  async loadThemeFromSupabase() {
+  async loadThemeFromBackend() {
     try {
-      const { data, error } = await supabase
-        .from('user_settings')
-        .select('theme_mode, accent_color')
-        .single()
+      const settings = await settingsService.getSettings()
       
-      if (data) {
-        store.setTheme({
-          mode: data.theme_mode || 'system',
-          accentColor: data.accent_color || '#10b981'
+      if (settings) {
+        const theme = {
+          mode: settings.theme_mode || 'system',
+          accentColor: settings.accent_color || '#10b981'
+        }
+        
+        store.setTheme(theme)
+        
+        // Also update userSettings in store
+        store.setUserSettings({
+          themeMode: theme.mode,
+          accentColor: theme.accentColor
         })
       }
     } catch (error) {
-      console.error('Failed to load theme from Supabase:', error)
+      console.error('Failed to load theme from backend:', error)
     }
   }
 
   /**
-   * Save theme settings to Supabase
+   * Save theme settings to backend via settingsService
    * @param {Object} theme - Theme settings
    */
-  async saveThemeToSupabase(theme) {
+  async saveThemeToBackend(theme) {
     try {
-      const { error } = await supabase
-        .from('user_settings')
-        .upsert({
-          theme_mode: theme.mode,
-          accent_color: theme.accentColor,
-          updated_at: new Date().toISOString()
-        })
+      await settingsService.updateTheme(theme.mode, theme.accentColor)
       
-      if (error) throw error
+      // Update userSettings in store
+      store.setUserSettings({
+        themeMode: theme.mode,
+        accentColor: theme.accentColor
+      })
     } catch (error) {
-      console.error('Failed to save theme to Supabase:', error)
+      console.error('Failed to save theme to backend:', error)
       throw error
     }
   }
@@ -266,7 +266,7 @@ class ThemeManager {
   async setThemeMode(mode) {
     const theme = { ...store.getState().theme, mode }
     store.setTheme(theme)
-    await this.saveThemeToSupabase(theme)
+    await this.saveThemeToBackend(theme)
   }
 
   /**
@@ -276,7 +276,7 @@ class ThemeManager {
   async setAccentColor(color) {
     const theme = { ...store.getState().theme, accentColor: color }
     store.setTheme(theme)
-    await this.saveThemeToSupabase(theme)
+    await this.saveThemeToBackend(theme)
   }
 
   /**
