@@ -1,6 +1,7 @@
 import './styles/main.css'
 import { supabase } from './config/supabase.js'
 import { store } from './state/store.js'
+import { toSentenceCaps } from './utils/textFormatter.js'
 import { router } from './router/router.js'
 import { themeManager } from './theme/ThemeManager.js'
 import { aiService } from './services/aiService.js'
@@ -8,6 +9,7 @@ import { logService } from './services/logService.js'
 import { foodService } from './services/foodService.js'
 import { waterService } from './services/waterService.js'
 import { weightService } from './services/weightService.js'
+import { settingsService } from './services/settingsService.js'
 import AuthScreen from './components/auth/AuthScreen.js'
 import topNavBar from './components/navigation/TopNavBar.js'
 import bottomNav from './components/navigation/BottomNav.js'
@@ -43,10 +45,14 @@ class App {
     // Initialize theme manager
     await themeManager.init()
     
+    // Load user settings into store
+    await this.loadUserSettings()
+    
     // Set up auth state listener
     supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         store.setUser(session?.user)
+        this.loadUserSettings()
         this.renderApp()
       } else if (event === 'SIGNED_OUT') {
         store.setUser(null)
@@ -67,6 +73,37 @@ class App {
     // Set up router
     this.setupRouter()
     router.init()
+  }
+
+  /**
+   * Load user settings from the database into the store
+   */
+  async loadUserSettings() {
+    try {
+      const settings = await settingsService.getSettings()
+      if (settings) {
+        store.setUserSettings({
+          themeMode: settings.theme_mode || 'system',
+          accentColor: settings.accent_color || '#10b981',
+          aiProvider: settings.ai_provider || null,
+          aiModelName: settings.ai_model_name || null,
+          weightUnit: settings.weight_unit || 'lbs',
+          heightUnit: settings.height_unit || 'ft',
+          waterUnit: settings.water_unit || 'oz',
+          distanceUnit: settings.distance_unit || 'mi',
+          quickWaterSize1: settings.quick_water_size_1 || 236.588,
+          quickWaterSize2: settings.quick_water_size_2 || 473.176,
+          quickWaterSize3: settings.quick_water_size_3 || 709.765,
+          birthday: settings.birthday || null,
+          sex: settings.sex || null,
+          heightCm: settings.height_cm || null,
+          cardioExperience: settings.cardio_experience || 'none',
+          liftingExperience: settings.lifting_experience || 'none'
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load user settings:', error)
+    }
   }
 
   setupRouter() {
@@ -269,7 +306,7 @@ class App {
       
       aiModal.showResult({
         logType: 'food',
-        foodName: result.name,
+        foodName: toSentenceCaps(result.name),
         calories: result.calories,
         protein: result.protein,
         carbs: result.carbs,
@@ -315,7 +352,7 @@ class App {
           const estimated = result.estimated_nutrition || {}
           aiModal.showResult({
             logType: 'food',
-            foodName: result.search_term,
+            foodName: toSentenceCaps(result.search_term),
             servings: result.servings || 1,
             serving_size: estimated.serving_size || 1,
             serving_unit: estimated.serving_unit || 'serving',
@@ -335,7 +372,7 @@ class App {
           console.log('Showing found food:', result.foodName)
           aiModal.showResult({
             logType: 'food',
-            foodName: result.foodName,
+            foodName: toSentenceCaps(result.foodName),
             calories: result.calories,
             protein: result.protein,
             carbs: result.carbs,

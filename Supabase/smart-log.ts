@@ -155,6 +155,12 @@ function parseJsonResponse(rawResponse: string): object {
   return JSON.parse(cleanJsonString);
 }
 
+// Convert string to Sentence Caps (first letter capitalized, rest lowercase)
+function toSentenceCaps(str: string): string {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
 // Convert water amount to ml
 function convertWaterToMl(amount: number, unit: string): number {
   const normalizedUnit = unit.toLowerCase().trim();
@@ -312,15 +318,31 @@ serve(async (req) => {
         if (!foods || foods.length === 0) {
           try {
             const nutritionResponse = await callAI(provider, ai_api_key, model_name, NUTRITION_ESTIMATE_PROMPT, `Estimate nutrition for: ${searchTerm}`);
-            const estimatedNutrition = parseJsonResponse(nutritionResponse);
+            const estimatedNutrition = parseJsonResponse(nutritionResponse) as {
+              name?: string;
+              brand?: string | null;
+              serving_size?: number;
+              serving_unit?: string;
+              calories?: number;
+              protein?: number;
+              carbs?: number;
+              fat?: number;
+            };
+
+            // Apply Sentence Caps to the estimated food name
+            const formattedName = estimatedNutrition.name ? toSentenceCaps(estimatedNutrition.name) : toSentenceCaps(searchTerm);
+            const formattedNutrition = {
+              ...estimatedNutrition,
+              name: formattedName
+            };
 
             return new Response(
               JSON.stringify({
                 logType: 'food',
                 food_not_found: true,
-                search_term: searchTerm,
+                search_term: formattedName,
                 servings,
-                estimated_nutrition: estimatedNutrition,
+                estimated_nutrition: formattedNutrition,
                 confidence
               }),
               { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -337,7 +359,7 @@ serve(async (req) => {
             logType: 'food',
             food_not_found: false,
             food_id: food.id,
-            foodName: food.name,
+            foodName: toSentenceCaps(food.name),
             servings,
             calories: food.calories * servings,
             protein: food.protein * servings,

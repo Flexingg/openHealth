@@ -2,6 +2,7 @@ import { store } from '../state/store.js'
 import { logService } from '../services/logService.js'
 import { goalsService } from '../services/goalsService.js'
 import { waterService } from '../services/waterService.js'
+import { weightService } from '../services/weightService.js'
 import { router } from '../router/router.js'
 
 /**
@@ -16,12 +17,14 @@ class Dashboard {
     this.logsByMeal = {}
     this.expandedMeals = new Set()
     this.waterTotal = { total_ml: 0, total_oz: 0 }
+    this.currentWeight = null
     this.swipeState = {
       startX: 0,
       currentX: 0,
       isDragging: false,
       activeItem: null
     }
+    this.eventListenersAttached = false
   }
 
   async fetchData() {
@@ -42,6 +45,10 @@ class Dashboard {
       this.mealTimeSummary = mealTimeSummary
       this.logsByMeal = logsByMeal
       this.waterTotal = waterTotal
+      
+      // Fetch current weight for the selected date
+      const weightData = await weightService.getWeightByDate(date).catch(() => null)
+      this.currentWeight = weightData?.weight_kg || null
       
       if (goals) {
         store.setGoals({
@@ -244,7 +251,10 @@ class Dashboard {
   mount(container) {
     this.addStyles()
     container.innerHTML = this.render()
-    this.attachEventListeners()
+    if (!this.eventListenersAttached) {
+      this.attachEventListeners()
+      this.eventListenersAttached = true
+    }
   }
 
   addStyles() {
@@ -395,10 +405,12 @@ class Dashboard {
   }
 
   attachEventListeners() {
-    // Meal card toggle
-    const headers = document.querySelectorAll('.meal-card-header')
-    headers.forEach(header => {
-      header.addEventListener('click', () => {
+    const container = document.getElementById('main-view')
+    
+    // Use event delegation for meal card toggles
+    container.addEventListener('click', (e) => {
+      const header = e.target.closest('.meal-card-header')
+      if (header) {
         const mealTime = header.dataset.toggle
         if (this.expandedMeals.has(mealTime)) {
           this.expandedMeals.delete(mealTime)
@@ -406,98 +418,108 @@ class Dashboard {
           this.expandedMeals.add(mealTime)
         }
         this.mount(document.getElementById('main-view'))
-      })
-    })
-    
-    // Meal item click (edit)
-    const items = document.querySelectorAll('.meal-item')
-    items.forEach(item => {
-      item.addEventListener('click', (e) => {
-        // Don't navigate if swiping
-        if (this.swipeState.isDragging) return
-        
+        return
+      }
+      
+      // Meal item click (edit)
+      const item = e.target.closest('.meal-item')
+      if (item && !this.swipeState.isDragging) {
         const logId = item.dataset.logId
         router.navigate(`/log/${logId}`)
-      })
+        return
+      }
+      
+      // Water card click - open modal
+      const waterCard = e.target.closest('#water-card')
+      if (waterCard) {
+        window.dispatchEvent(new CustomEvent('open-water-modal'))
+        return
+      }
     })
     
-    // Water card click - open modal
-    const waterCard = document.getElementById('water-card')
-    if (waterCard) {
-      waterCard.addEventListener('click', () => {
-        // Dispatch custom event to open water modal
-        window.dispatchEvent(new CustomEvent('open-water-modal'))
-      })
-    }
-    
-    // Swipe-to-delete
+    // Swipe-to-delete setup (needs to run after DOM is ready)
     this.setupSwipeToDelete()
   }
 
   setupSwipeToDelete() {
-    const wrappers = document.querySelectorAll('.meal-item-wrapper')
+    const container = document.getElementById('main-view')
     
-    wrappers.forEach(wrapper => {
-      const item = wrapper.querySelector('.meal-item')
-      const deleteBtn = wrapper.querySelector('.swipe-delete-btn')
-      let startX = 0
-      let currentX = 0
-      let isDragging = false
+    // Use event delegation for swipe-to-delete on meal items
+    container.addEventListener('touchstart', (e) => {
+      const item = e.target.closest('.meal-item')
+      if (!item) return
       
-      // Touch events
-      item.addEventListener('touchstart', (e) => {
-        startX = e.touches[0].clientX
-        isDragging = true
-        item.style.transition = 'none'
-      }, { passive: true })
+      const wrapper = item.closest('.meal-item-wrapper')
+      if (!wrapper) return
       
-      item.addEventListener('touchmove', (e) => {
-        if (!isDragging) return
-        currentX = e.touches[0].clientX
-        const diff = startX - currentX
-        
-        if (diff > 0) {
-          // Swiping left
-          const translate = Math.min(diff, 80)
-          item.style.transform = `translateX(-${translate}px)`
-        }
-      }, { passive: true })
+      this.handleSwipeStart(e, wrapper, item)
+    }, { passive: true })
+    
+    container.addEventListener('touchmove', (e) => {
+      const item = e.target.closest('.meal-item')
+      if (!item) return
       
-      item.addEventListener('touchend', () => {
-        isDragging = false
-        item.style.transition = 'transform 0.2s ease'
-        
-        const diff = startX - currentX
-        if (diff > 40) {
-          // Show delete button
-          wrapper.classList.add('swiped')
-          item.style.transform = 'translateX(-80px)'
-        } else {
-          // Reset
-          wrapper.classList.remove('swiped')
-          item.style.transform = 'translateX(0)'
-        }
-        
-        this.swipeState.isDragging = diff > 10
-      })
+      const wrapper = item.closest('.meal-item-wrapper')
+      if (!wrapper) return
       
-      // Delete button click
-      if (deleteBtn) {
-        deleteBtn.addEventListener('click', async (e) => {
-          e.stopPropagation()
-          const logId = deleteBtn.dataset.deleteId
-          await this.handleDeleteLog(logId, wrapper)
-        })
-      }
+      this.handleSwipeMove(e, wrapper, item)
+    }, { passive: true })
+    
+    container.addEventListener('touchend', (e) => {
+      const item = e.target.closest('.meal-item')
+      if (!item) return
       
-      // Click outside to close swipe
-      document.addEventListener('click', (e) => {
-        if (!wrapper.contains(e.target)) {
-          wrapper.classList.remove('swiped')
-          item.style.transform = 'translateX(0)'
-        }
-      })
+      const wrapper = item.closest('.meal-item-wrapper')
+      if (!wrapper) return
+      
+      this.handleSwipeEnd(e, wrapper, item)
     })
+    
+    // Delete button click
+    container.addEventListener('click', async (e) => {
+      const deleteBtn = e.target.closest('.swipe-delete-btn')
+      if (!deleteBtn) return
+      
+      e.stopPropagation()
+      const logId = deleteBtn.dataset.deleteId
+      const wrapper = deleteBtn.closest('.meal-item-wrapper')
+      await this.handleDeleteLog(logId, wrapper)
+    })
+  }
+  
+  handleSwipeStart(e, wrapper, item) {
+    wrapper._startX = e.touches[0].clientX
+    wrapper._isDragging = true
+    item.style.transition = 'none'
+  }
+  
+  handleSwipeMove(e, wrapper, item) {
+    if (!wrapper._isDragging) return
+    const currentX = e.touches[0].clientX
+    const diff = wrapper._startX - currentX
+    
+    if (diff > 0) {
+      const translate = Math.min(diff, 80)
+      item.style.transform = `translateX(-${translate}px)`
+    }
+  }
+  
+  handleSwipeEnd(e, wrapper, item) {
+    wrapper._isDragging = false
+    item.style.transition = 'transform 0.2s ease'
+    
+    const currentX = e.changedTouches[0].clientX
+    const diff = wrapper._startX - currentX
+    
+    if (diff > 40) {
+      wrapper.classList.add('swiped')
+      item.style.transform = 'translateX(-80px)'
+    } else {
+      wrapper.classList.remove('swiped')
+      item.style.transform = 'translateX(0)'
+    }
+    
+    this.swipeState.isDragging = diff > 10
   }
 
   async handleDeleteLog(logId, wrapper) {

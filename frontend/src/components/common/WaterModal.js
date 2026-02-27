@@ -11,6 +11,8 @@ class WaterModal {
     this.waterLogs = []
     this.waterTotal = { total_ml: 0, total_oz: 0 }
     this.customAmount = ''
+    this.isRefreshing = false
+    this.eventListenersAttached = false
   }
 
   async fetchData() {
@@ -136,7 +138,10 @@ class WaterModal {
 
   mount(container) {
     container.innerHTML = this.render()
-    this.attachEventListeners()
+    if (!this.eventListenersAttached) {
+      this.attachEventListeners()
+      this.eventListenersAttached = true
+    }
   }
 
   attachEventListeners() {
@@ -187,16 +192,17 @@ class WaterModal {
   }
 
   async handleQuickAdd(ml) {
+    if (this.isRefreshing) return
+    this.isRefreshing = true
+    
     try {
       await waterService.logWater(ml, store.getSelectedDateString())
       await this.fetchData()
       this.updateModal()
-      
-      if (this.onLogAdded) {
-        this.onLogAdded()
-      }
     } catch (error) {
       console.error('Failed to log water:', error)
+    } finally {
+      this.isRefreshing = false
     }
   }
 
@@ -284,8 +290,8 @@ class WaterModal {
       overlay.classList.add('open')
     }
     
-    // Re-attach event listeners after opening
-    this.attachEventListeners()
+    // Update modal with fetched data
+    this.updateModal()
   }
 
   close() {

@@ -16,7 +16,12 @@ class GoalsService {
       .eq('date', date)
       .single()
     
-    if (error && error.code !== 'PGRST116') throw error
+    if (error) {
+      // Handle PGRST116 (no rows returned) as null, not an error
+      if (error.code === 'PGRST116') return null
+      console.error('Goals fetch error:', error)
+      return null
+    }
     return data
   }
 
