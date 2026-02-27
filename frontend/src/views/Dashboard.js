@@ -130,14 +130,7 @@ class Dashboard {
         <!-- Quick Trackers (water/weight) -->
         <section class="quick-trackers">
           ${this.renderWaterCard()}
-          <div class="tracker-card">
-            <div class="tracker-icon-bg">⚖️</div>
-            <div class="tracker-header">
-              <span class="tracker-icon">⚖️</span>
-              <span class="tracker-label">Weight</span>
-            </div>
-            <div class="tracker-value">-- <span class="tracker-unit">lbs</span></div>
-          </div>
+          ${this.renderWeightCard()}
         </section>
         
         <!-- Diary Section -->
@@ -243,6 +236,31 @@ class Dashboard {
           <span class="tracker-label">Water</span>
         </div>
         <div class="tracker-value">${total} <span class="tracker-unit">${unit}</span></div>
+        <div class="tracker-tap-hint">Tap to log</div>
+      </div>
+    `
+  }
+
+  renderWeightCard() {
+    const userSettings = store.getState().userSettings
+    const unit = userSettings.weightUnit || 'lbs'
+    
+    let displayWeight = '--'
+    if (this.currentWeight) {
+      const weight = unit === 'lbs' 
+        ? weightService.kgToLbs(this.currentWeight)
+        : this.currentWeight
+      displayWeight = Math.round(weight * 10) / 10
+    }
+    
+    return `
+      <div class="tracker-card weight clickable" id="weight-card">
+        <div class="tracker-icon-bg">⚖️</div>
+        <div class="tracker-header">
+          <span class="tracker-icon">⚖️</span>
+          <span class="tracker-label">Weight</span>
+        </div>
+        <div class="tracker-value">${displayWeight} <span class="tracker-unit">${unit}</span></div>
         <div class="tracker-tap-hint">Tap to log</div>
       </div>
     `
@@ -387,6 +405,18 @@ class Dashboard {
         .tracker-card.water.clickable:active {
           transform: translateY(0);
         }
+        /* Weight card styles */
+        .tracker-card.weight.clickable {
+          cursor: pointer;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .tracker-card.weight.clickable:hover {
+          transform: translateY(-2px);
+          box-shadow: var(--md-elevation-2);
+        }
+        .tracker-card.weight.clickable:active {
+          transform: translateY(0);
+        }
         .tracker-tap-hint {
           font-size: 0.625rem;
           color: var(--md-text-secondary);
@@ -433,6 +463,13 @@ class Dashboard {
       const waterCard = e.target.closest('#water-card')
       if (waterCard) {
         window.dispatchEvent(new CustomEvent('open-water-modal'))
+        return
+      }
+      
+      // Weight card click - open modal
+      const weightCard = e.target.closest('#weight-card')
+      if (weightCard) {
+        window.dispatchEvent(new CustomEvent('open-weight-modal'))
         return
       }
     })

@@ -18,6 +18,7 @@ import BottomSheet from './components/common/BottomSheet.js'
 import AIModal from './components/common/AIModal.js'
 import EditLogModal from './components/common/EditLogModal.js'
 import WaterModal from './components/common/WaterModal.js'
+import WeightModal from './components/common/WeightModal.js'
 import Dashboard from './views/Dashboard.js'
 import Diary from './views/Diary.js'
 import Settings from './views/Settings.js'
@@ -31,6 +32,7 @@ let bottomSheet = null
 let aiModal = null
 let editLogModal = null
 let waterModal = null
+let weightModal = null
 
 /**
  * Main App class
@@ -149,6 +151,7 @@ class App {
       <div id="ai-modal-container"></div>
       <div id="edit-log-modal-container"></div>
       <div id="water-modal-container"></div>
+      <div id="weight-modal-container"></div>
       <div id="bottom-nav-container"></div>
       <input type="file" id="native-camera-input" accept="image/*" capture="environment" style="display: none;">
     `
@@ -188,6 +191,18 @@ class App {
     window.addEventListener('open-water-modal', () => {
       if (waterModal) {
         waterModal.open()
+      }
+    })
+    
+    // Initialize Weight Modal
+    weightModal = new WeightModal(() => this.handleWeightLogged())
+    weightModal.addStyles()
+    weightModal.mount(document.getElementById('weight-modal-container'))
+    
+    // Listen for open weight modal event
+    window.addEventListener('open-weight-modal', () => {
+      if (weightModal) {
+        weightModal.open()
       }
     })
     
@@ -287,6 +302,20 @@ class App {
   }
 
   async handleWaterLogged() {
+    // Refresh the current view
+    if (this.currentView && this.currentView.init) {
+      await this.currentView.init()
+      this.currentView.mount(document.getElementById('main-view'))
+    }
+  }
+
+  openWeightModal() {
+    if (weightModal) {
+      weightModal.open()
+    }
+  }
+
+  async handleWeightLogged() {
     // Refresh the current view
     if (this.currentView && this.currentView.init) {
       await this.currentView.init()
