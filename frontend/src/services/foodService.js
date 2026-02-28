@@ -117,6 +117,41 @@ class FoodService {
       return true
     }).map(item => item.foods)
   }
+
+  /**
+   * Update an existing food
+   * @param {string} id - Food ID
+   * @param {Object} updates - Food updates
+   * @returns {Promise<Object>} Updated food
+   */
+  async updateFood(id, updates) {
+    const foodData = { ...updates }
+    
+    // Remove common_servings from updates if present
+    delete foodData.common_servings
+    
+    // Calculate per-100g values if serving_grams is provided
+    if (foodData.serving_grams && foodData.calories) {
+      const multiplier = 100 / foodData.serving_grams
+      foodData.calories_per_100g = Math.round(foodData.calories * multiplier * 10) / 10
+      foodData.protein_per_100g = Math.round((foodData.protein || 0) * multiplier * 10) / 10
+      foodData.carbs_per_100g = Math.round((foodData.carbs || 0) * multiplier * 10) / 10
+      foodData.fat_per_100g = Math.round((foodData.fat || 0) * multiplier * 10) / 10
+    }
+    
+    const { data, error } = await supabase
+      .from('foods')
+      .update(foodData)
+      .eq('id', id)
+      .select()
+      .single()
+    
+    if (error) {
+      console.error('Supabase update error:', error)
+      throw error
+    }
+    return data
+  }
 }
 
 export const foodService = new FoodService()

@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS user_goals (
   UNIQUE(user_id, date) 
 );
 
+-- Index for faster queries by date (required for PostgREST filtering)
+CREATE INDEX IF NOT EXISTS idx_user_goals_date ON user_goals(date);
+
 CREATE TABLE IF NOT EXISTS meals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES auth.users(id) NOT NULL DEFAULT auth.uid(),
@@ -148,6 +151,7 @@ ALTER TABLE recipe_ingredients ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Foods viewable by all" ON foods FOR SELECT USING (true);
 CREATE POLICY "Users can create foods" ON foods FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Users can update foods" ON foods FOR UPDATE TO authenticated USING (true);
 
 CREATE POLICY "Manage own logs" ON logs FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Manage own goals" ON user_goals FOR ALL USING (auth.uid() = user_id);

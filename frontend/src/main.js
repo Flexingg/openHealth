@@ -1,4 +1,4 @@
-import './styles/main.css'
+﻿import './styles/main.css'
 import { supabase } from './config/supabase.js'
 import { store } from './state/store.js'
 import { toSentenceCaps } from './utils/textFormatter.js'
@@ -163,9 +163,21 @@ class App {
     // Initialize FAB Speed Dial
     fabSpeedDial = new FabSpeedDial(
       () => this.openCamera(),
-      () => this.openBottomSheet()
+      () => this.openBottomSheet(),
+      () => this.startVoiceRecording()
     )
     fabSpeedDial.mount(document.getElementById('fab-container-wrapper'))
+    
+    // Set up voice recording callbacks
+    fabSpeedDial.setVoiceCallbacks(
+      () => this.handleVoiceStart(),
+      () => this.handleVoiceEnd(),
+      () => this.handleVoiceCancel(),
+      (text) => this.handleTranscriptUpdate(text)
+    )
+    
+    // Add voice recording overlay to DOM
+    this.addVoiceOverlay()
     
     // Initialize Bottom Sheet
     bottomSheet = new BottomSheet((text) => this.handleSmartLog(text))
@@ -321,6 +333,257 @@ class App {
       await this.currentView.init()
       this.currentView.mount(document.getElementById('main-view'))
     }
+  }
+
+  // ===== Voice Recording Methods =====
+  
+  startVoiceRecording() {
+    // Start voice recording directly without needing to hold
+    if (fabSpeedDial) {
+      fabSpeedDial.startRecording()
+    }
+  }
+  
+  addVoiceOverlay() {
+    const overlay = document.createElement('div')
+    overlay.id = 'voice-overlay'
+    overlay.className = 'voice-overlay'
+    overlay.innerHTML = `
+      <div class="voice-indicator">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <line x1="12" y1="19" x2="12" y2="23"></line>
+          <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+      </div>
+      <div class="transcription-text listening" id="transcription-text">Listening...</div>
+      <div class="release-hint">Release to send</div>
+    `
+    document.body.appendChild(overlay)
+  }
+
+  handleVoiceStart() {
+    console.log('Voice recording started')
+    
+    // Check if speech recognition is supported
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    
+    if (!SpeechRecognition) {
+      console.error('Speech recognition not supported')
+      this.showVoiceError('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.')
+      return
+    }
+    
+    // Request microphone permission first (for mobile browsers)
+    const requestMicPermission = async () => {
+      try {
+        // Request microphone access to trigger permission prompt on mobile
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        // Stop the stream immediately - we just wanted the permission
+        stream.getTracks().forEach(track => track.stop())
+        return true
+      } catch (err) {
+        console.error('Microphone permission denied:', err)
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          this.showVoiceError('Microphone access denied. Please allow microphone access in your browser settings.')
+          return false
+        }
+        // Continue anyway if it's another error - speech recognition might still work
+        return true
+      }
+    }
+    
+    // Initialize speech recognition
+    this.speechRecognition = new SpeechRecognition()
+    this.speechRecognition.continuous = false
+    this.speechRecognition.interimResults = true
+    this.speechRecognition.lang = 'en-US'
+    
+    // Track the last processed result to avoid duplicates
+    this.lastFinalTranscript = ''
+    
+    // Store the transcript
+    this.currentTranscript = ''
+    this.lastFinalTranscript = ''
+    
+    // Handle results
+    this.speechRecognition.onresult = (event) => {
+      let interimTranscript = ''
+      let finalTranscript = ''
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          // Only add if we haven't already processed this exact transcript
+          if (transcript.trim() !== this.lastFinalTranscript.trim()) {
+            finalTranscript += transcript + ' '
+            this.lastFinalTranscript = transcript
+          }
+        } else {
+          interimTranscript += transcript
+        }
+      }
+      
+      // Update the full transcript
+      this.currentTranscript += finalTranscript
+      
+      // Update the display
+      const displayText = this.currentTranscript + interimTranscript
+      this.updateTranscriptDisplay(displayText)
+    }
+    
+    // Handle errors
+    this.speechRecognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error)
+      
+      if (event.error === 'not-allowed') {
+        this.showVoiceError('Microphone access denied. Please allow microphone access in your browser settings.')
+      } else if (event.error === 'no-speech') {
+        // No speech detected - this is okay, just continue listening
+        console.log('No speech detected, continuing...')
+      } else if (event.error !== 'aborted') {
+        this.showVoiceError(`Speech recognition error: ${event.error}`)
+      }
+    }
+    
+    // Handle end of speech
+    this.speechRecognition.onend = () => {
+      console.log('Speech recognition ended')
+      // With continuous=false, we don't auto-restart
+      // The user controls when to stop via tap/release
+    }
+    
+    // Start listening - first request mic permission then start speech recognition
+    const startListening = async () => {
+      const micAllowed = await requestMicPermission()
+      if (!micAllowed) return // Error already shown
+      
+      try {
+        this.speechRecognition.start()
+      } catch (e) {
+        console.error('Error starting speech recognition:', e)
+        this.showVoiceError('Could not start voice recording. Please try again.')
+        return
+      }
+      
+      // Show the overlay
+      this.showVoiceOverlay()
+    }
+    
+    startListening()
+  }
+
+  handleVoiceEnd() {
+    console.log('Voice recording ended')
+    
+    // Stop speech recognition
+    if (this.speechRecognition) {
+      try {
+        this.speechRecognition.stop()
+      } catch (e) {
+        console.error('Error stopping speech recognition:', e)
+      }
+      this.speechRecognition = null
+    }
+    
+    // Hide the overlay
+    this.hideVoiceOverlay()
+    
+    // Process the transcript
+    const transcript = this.currentTranscript ? this.currentTranscript.trim() : ''
+    
+    if (transcript) {
+      console.log('Processing voice transcript:', transcript)
+      // Send to smart log
+      this.handleSmartLog(transcript)
+    } else {
+      console.log('No speech detected')
+    }
+    
+    this.currentTranscript = ''
+    this.lastFinalTranscript = ''
+  }
+
+  handleVoiceCancel() {
+    console.log('Voice recording cancelled')
+    
+    // Stop speech recognition
+    if (this.speechRecognition) {
+      try {
+        this.speechRecognition.stop()
+      } catch (e) {
+        console.error('Error stopping speech recognition:', e)
+      }
+      this.speechRecognition = null
+    }
+    
+    // Hide the overlay
+    this.hideVoiceOverlay()
+    
+    this.currentTranscript = ''
+    this.lastFinalTranscript = ''
+  }
+
+  handleTranscriptUpdate(text) {
+    // This is called from FAB, but we handle it in onresult
+    this.updateTranscriptDisplay(text)
+  }
+
+  showVoiceOverlay() {
+    const overlay = document.getElementById('voice-overlay')
+    if (overlay) {
+      overlay.classList.add('active')
+      overlay.classList.remove('error')
+      this.updateTranscriptDisplay('')
+    }
+  }
+
+  hideVoiceOverlay() {
+    const overlay = document.getElementById('voice-overlay')
+    if (overlay) {
+      overlay.classList.remove('active', 'swiping')
+    }
+  }
+
+  updateTranscriptDisplay(text) {
+    const transcriptionEl = document.getElementById('transcription-text')
+    if (!transcriptionEl) return
+    
+    if (!text) {
+      transcriptionEl.textContent = 'Listening...'
+      transcriptionEl.className = 'transcription-text listening'
+    } else {
+      transcriptionEl.textContent = text
+      transcriptionEl.className = 'transcription-text'
+    }
+  }
+
+  showVoiceError(message) {
+    const overlay = document.getElementById('voice-overlay')
+    const transcriptionEl = document.getElementById('transcription-text')
+    
+    if (overlay) {
+      overlay.classList.add('error')
+    }
+    
+    if (transcriptionEl) {
+      transcriptionEl.textContent = message
+      transcriptionEl.className = 'transcription-text'
+    }
+    
+    // Stop recognition if running
+    if (this.speechRecognition) {
+      try {
+        this.speechRecognition.stop()
+      } catch (e) {}
+      this.speechRecognition = null
+    }
+    
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+      this.hideVoiceOverlay()
+    }, 3000)
   }
 
   async handleCameraCapture(e) {

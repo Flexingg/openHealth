@@ -35,6 +35,12 @@ CREATE POLICY "Users can delete own water logs" ON water_logs
 CREATE INDEX IF NOT EXISTS idx_water_logs_user_date ON water_logs(user_id, date);
 
 -- ==========================================
+-- 4. ADDITIONAL INDEXES FOR POSTGREST FILTERING
+-- ==========================================
+-- Index for daily_water_summary view queries (required for 406 fix)
+CREATE INDEX IF NOT EXISTS idx_water_logs_date ON water_logs(date);
+
+-- ==========================================
 -- 2. WEIGHT LOGS TABLE
 -- ==========================================
 CREATE TABLE IF NOT EXISTS weight_logs (

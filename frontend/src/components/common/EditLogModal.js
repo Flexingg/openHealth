@@ -1,4 +1,5 @@
 import { logService } from '../../services/logService.js'
+import { foodService } from '../../services/foodService.js'
 import { servingService } from '../../services/servingService.js'
 
 /**
@@ -7,10 +8,13 @@ import { servingService } from '../../services/servingService.js'
 class EditLogModal {
   constructor() {
     this.log = null
+    this.food = null
     this.servings = []
     this.loading = false
     this.error = null
     this.showDeleteConfirm = false
+    // Mode: 'log' | 'food' | 'servings'
+    this.mode = 'log'
     this.formData = {
       servings_consumed: 1,
       food_serving_id: null,
@@ -18,6 +22,25 @@ class EditLogModal {
       meal_time: 'Breakfast',
       date: new Date().toISOString().split('T')[0],
       time_logged: null
+    }
+    // Food editing form data
+    this.foodFormData = {
+      name: '',
+      brand: '',
+      serving_size: 1,
+      serving_unit: 'serving',
+      serving_grams: null,
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0
+    }
+    // Serving form for adding/editing
+    this.servingFormData = {
+      id: null,
+      name: '',
+      grams: 100,
+      is_default: false
     }
     this.onSave = null
     this.onDelete = null
@@ -38,6 +61,7 @@ class EditLogModal {
     this.loading = true
     this.error = null
     this.showDeleteConfirm = false
+    this.mode = 'log'
     this.render()
 
     try {
@@ -46,6 +70,10 @@ class EditLogModal {
       
       // Fetch available servings for this food
       this.servings = await servingService.getServingsForFood(this.log.food_id)
+      
+      // Load food data for editing
+      this.food = this.log.foods
+      this.initFoodFormData()
       
       // Initialize form data from log
       this.formData = {
@@ -67,6 +95,22 @@ class EditLogModal {
     }
   }
 
+  initFoodFormData() {
+    if (this.food) {
+      this.foodFormData = {
+        name: this.food.name || '',
+        brand: this.food.brand || '',
+        serving_size: this.food.serving_size || 1,
+        serving_unit: this.food.serving_unit || 'serving',
+        serving_grams: this.food.serving_grams || null,
+        calories: this.food.calories || 0,
+        protein: this.food.protein || 0,
+        carbs: this.food.carbs || 0,
+        fat: this.food.fat || 0
+      }
+    }
+  }
+
   getCurrentTime() {
     const now = new Date()
     return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
@@ -74,8 +118,15 @@ class EditLogModal {
 
   close() {
     this.log = null
+    this.food = null
     this.servings = []
+    this.mode = 'log'
     if (this.onClose) this.onClose()
+    this.render()
+  }
+
+  setMode(mode) {
+    this.mode = mode
     this.render()
   }
 
@@ -123,6 +174,13 @@ class EditLogModal {
       return this.renderDeleteConfirm()
     }
 
+    // Render based on mode
+    if (this.mode === 'food') {
+      return this.renderFoodEditForm()
+    } else if (this.mode === 'servings') {
+      return this.renderServingsManageForm()
+    }
+    
     return this.renderEditForm()
   }
 
@@ -158,6 +216,28 @@ class EditLogModal {
               <div class="food-info-nutrition">
                 ${nutrition.calories} cal · ${nutrition.protein}g protein
               </div>
+            </div>
+            
+            <!-- Food Actions -->
+            <div class="food-actions-row">
+              <button class="btn btn-secondary btn-sm" id="edit-food-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                Edit Food
+              </button>
+              <button class="btn btn-secondary btn-sm" id="manage-servings-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6"></line>
+                  <line x1="8" y1="12" x2="21" y2="12"></line>
+                  <line x1="8" y1="18" x2="21" y2="18"></line>
+                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+                Servings
+              </button>
             </div>
             
             <!-- Serving Size Selection -->
@@ -264,13 +344,13 @@ class EditLogModal {
   }
 
   attachEventListeners() {
-    // Close button
+    // Close button - handle all modes
     const closeBtn = document.getElementById('edit-modal-close')
     if (closeBtn) {
       closeBtn.addEventListener('click', () => this.close())
     }
 
-    // Overlay click to close
+    // Overlay click to close - handle all modes
     const overlay = document.getElementById('edit-modal-overlay')
     if (overlay) {
       overlay.addEventListener('click', (e) => {
@@ -278,11 +358,34 @@ class EditLogModal {
       })
     }
 
-    // Cancel button
+    // Cancel button (for log edit mode)
     const cancelBtn = document.getElementById('edit-cancel-btn')
     if (cancelBtn) {
       cancelBtn.addEventListener('click', () => this.close())
     }
+
+    // Edit Food button
+    const editFoodBtn = document.getElementById('edit-food-btn')
+    if (editFoodBtn) {
+      editFoodBtn.addEventListener('click', () => {
+        this.initFoodFormData()
+        this.setMode('food')
+      })
+    }
+
+    // Manage Servings button
+    const manageServingsBtn = document.getElementById('manage-servings-btn')
+    if (manageServingsBtn) {
+      manageServingsBtn.addEventListener('click', () => {
+        this.setMode('servings')
+      })
+    }
+
+    // Food Edit Form listeners
+    this.attachFoodEditListeners()
+    
+    // Servings Management listeners
+    this.attachServingsListeners()
 
     // Serving select
     const servingSelect = document.getElementById('edit-serving-select')
@@ -417,6 +520,494 @@ class EditLogModal {
       this.loading = false
       this.render()
     }
+  }
+
+  // ===== Food Edit Methods =====
+
+  attachFoodEditListeners() {
+    // Back button in food edit mode
+    const backBtn = document.getElementById('food-edit-back-btn')
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        this.setMode('log')
+      })
+    }
+
+    // Food form inputs
+    const foodNameInput = document.getElementById('food-name')
+    if (foodNameInput) {
+      foodNameInput.addEventListener('input', (e) => {
+        this.foodFormData.name = e.target.value
+      })
+    }
+
+    const foodBrandInput = document.getElementById('food-brand')
+    if (foodBrandInput) {
+      foodBrandInput.addEventListener('input', (e) => {
+        this.foodFormData.brand = e.target.value
+      })
+    }
+
+    const servingSizeInput = document.getElementById('food-serving-size')
+    if (servingSizeInput) {
+      servingSizeInput.addEventListener('input', (e) => {
+        this.foodFormData.serving_size = parseFloat(e.target.value) || 1
+      })
+    }
+
+    const servingUnitInput = document.getElementById('food-serving-unit')
+    if (servingUnitInput) {
+      servingUnitInput.addEventListener('input', (e) => {
+        this.foodFormData.serving_unit = e.target.value
+      })
+    }
+
+    const servingGramsInput = document.getElementById('food-serving-grams')
+    if (servingGramsInput) {
+      servingGramsInput.addEventListener('input', (e) => {
+        this.foodFormData.serving_grams = parseFloat(e.target.value) || null
+      })
+    }
+
+    const caloriesInput = document.getElementById('food-calories')
+    if (caloriesInput) {
+      caloriesInput.addEventListener('input', (e) => {
+        this.foodFormData.calories = parseFloat(e.target.value) || 0
+      })
+    }
+
+    const proteinInput = document.getElementById('food-protein')
+    if (proteinInput) {
+      proteinInput.addEventListener('input', (e) => {
+        this.foodFormData.protein = parseFloat(e.target.value) || 0
+      })
+    }
+
+    const carbsInput = document.getElementById('food-carbs')
+    if (carbsInput) {
+      carbsInput.addEventListener('input', (e) => {
+        this.foodFormData.carbs = parseFloat(e.target.value) || 0
+      })
+    }
+
+    const fatInput = document.getElementById('food-fat')
+    if (fatInput) {
+      fatInput.addEventListener('input', (e) => {
+        this.foodFormData.fat = parseFloat(e.target.value) || 0
+      })
+    }
+
+    // Save food button
+    const saveFoodBtn = document.getElementById('save-food-btn')
+    if (saveFoodBtn) {
+      saveFoodBtn.addEventListener('click', () => this.handleSaveFood())
+    }
+
+    // Cancel food edit button
+    const cancelFoodBtn = document.getElementById('edit-modal-cancel-food')
+    if (cancelFoodBtn) {
+      cancelFoodBtn.addEventListener('click', () => {
+        this.setMode('log')
+      })
+    }
+  }
+
+  async handleSaveFood() {
+    if (!this.foodFormData.name) {
+      this.error = 'Food name is required'
+      this.render()
+      return
+    }
+
+    // Ensure we have a valid food ID
+    const foodId = this.food?.id || this.log?.foods?.id
+    if (!foodId) {
+      this.error = 'Food ID not found'
+      this.render()
+      return
+    }
+
+    this.loading = true
+    this.render()
+
+    try {
+      await foodService.updateFood(foodId, {
+        name: this.foodFormData.name,
+        brand: this.foodFormData.brand || null,
+        serving_size: this.foodFormData.serving_size,
+        serving_unit: this.foodFormData.serving_unit,
+        serving_grams: this.foodFormData.serving_grams,
+        calories: this.foodFormData.calories,
+        protein: this.foodFormData.protein,
+        carbs: this.foodFormData.carbs,
+        fat: this.foodFormData.fat
+      })
+
+      // Refresh the log to get updated food data
+      this.log = await logService.getLogById(this.log.id)
+      this.food = this.log.foods
+      
+      this.setMode('log')
+      if (this.onSave) this.onSave()
+    } catch (error) {
+      console.error('Failed to save food:', error)
+      this.error = 'Failed to save food'
+      this.loading = false
+      this.render()
+    }
+  }
+
+  renderFoodEditForm() {
+    return `
+      <div class="modal-overlay" id="edit-modal-overlay">
+        <div class="modal-content edit-log-modal">
+          <div class="modal-header">
+            <button class="back-btn" id="food-edit-back-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              Back
+            </button>
+            <h3>Edit Food</h3>
+            <button class="btn btn-icon" id="edit-modal-close" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="modal-body">
+            <div class="food-edit-section">
+              <h4>Basic Info</h4>
+              <div class="form-group">
+                <label class="form-label">Name *</label>
+                <input type="text" id="food-name" class="form-input" value="${this.foodFormData.name || ''}" />
+              </div>
+              
+              <div class="form-group">
+                <label class="form-label">Brand</label>
+                <input type="text" id="food-brand" class="form-input" value="${this.foodFormData.brand || ''}" />
+              </div>
+            </div>
+            
+            <div class="food-edit-section">
+              <h4>Serving Size</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Size</label>
+                  <input type="number" id="food-serving-size" class="form-input" value="${this.foodFormData.serving_size || 1}" step="0.1" min="0" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Unit</label>
+                  <input type="text" id="food-serving-unit" class="form-input" value="${this.foodFormData.serving_unit || 'serving'}" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Grams (optional)</label>
+                <input type="number" id="food-serving-grams" class="form-input" value="${this.foodFormData.serving_grams || ''}" step="0.1" min="0" placeholder="e.g., 240 for 1 cup" />
+              </div>
+            </div>
+            
+            <div class="food-edit-section">
+              <h4>Nutrition per Serving</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Calories</label>
+                  <input type="number" id="food-calories" class="form-input" value="${this.foodFormData.calories || 0}" min="0" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Protein (g)</label>
+                  <input type="number" id="food-protein" class="form-input" value="${this.foodFormData.protein || 0}" step="0.1" min="0" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Carbs (g)</label>
+                  <input type="number" id="food-carbs" class="form-input" value="${this.foodFormData.carbs || 0}" step="0.1" min="0" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Fat (g)</label>
+                  <input type="number" id="food-fat" class="form-input" value="${this.foodFormData.fat || 0}" step="0.1" min="0" />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="edit-modal-cancel-food">Cancel</button>
+            <button class="btn btn-primary" id="save-food-btn">Save Food</button>
+          </div>
+        </div>
+      </div>
+    `
+  }
+
+  // ===== Servings Management Methods =====
+
+  attachServingsListeners() {
+    // Back button in servings mode
+    const backBtn = document.getElementById('servings-back-btn')
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        this.setMode('log')
+      })
+    }
+
+    // Add serving button
+    const addServingBtn = document.getElementById('add-serving-btn')
+    if (addServingBtn) {
+      addServingBtn.addEventListener('click', () => {
+        this.servingFormData = { id: null, name: '', grams: 100, is_default: false }
+        this.render()
+      })
+    }
+
+    // Cancel add serving
+    const cancelAddBtn = document.getElementById('cancel-add-serving')
+    if (cancelAddBtn) {
+      cancelAddBtn.addEventListener('click', () => {
+        this.servingFormData = { id: null, name: '', grams: 100, is_default: false }
+        this.render()
+      })
+    }
+
+    // Save serving
+    const saveServingBtn = document.getElementById('save-serving-btn')
+    if (saveServingBtn) {
+      saveServingBtn.addEventListener('click', () => this.handleSaveServing())
+    }
+
+    // Serving form inputs
+    const servingNameInput = document.getElementById('serving-name')
+    if (servingNameInput) {
+      servingNameInput.addEventListener('input', (e) => {
+        this.servingFormData.name = e.target.value
+      })
+    }
+
+    const servingGramsInput = document.getElementById('serving-grams')
+    if (servingGramsInput) {
+      servingGramsInput.addEventListener('input', (e) => {
+        this.servingFormData.grams = parseFloat(e.target.value) || 100
+      })
+    }
+
+    // Event delegation for serving actions (edit, delete, set default)
+    document.addEventListener('click', async (e) => {
+      if (e.target.closest('.edit-serving-btn')) {
+        const btn = e.target.closest('.edit-serving-btn')
+        const servingId = btn.dataset.servingId
+        const serving = this.servings.find(s => s.id === servingId)
+        if (serving) {
+          this.servingFormData = {
+            id: serving.id,
+            name: serving.name,
+            grams: serving.grams,
+            is_default: serving.is_default
+          }
+          this.render()
+        }
+      }
+
+      if (e.target.closest('.delete-serving-btn')) {
+        const btn = e.target.closest('.delete-serving-btn')
+        const servingId = btn.dataset.servingId
+        if (confirm('Delete this serving size?')) {
+          await this.handleDeleteServing(servingId)
+        }
+      }
+
+      if (e.target.closest('.set-default-btn')) {
+        const btn = e.target.closest('.set-default-btn')
+        const servingId = btn.dataset.servingId
+        await this.handleSetDefaultServing(servingId)
+      }
+    })
+  }
+
+  async handleSaveServing() {
+    if (!this.servingFormData.name) {
+      this.error = 'Serving name is required'
+      this.render()
+      return
+    }
+
+    // Ensure we have a valid food ID
+    const foodId = this.food?.id || this.log?.foods?.id
+    if (!foodId) {
+      this.error = 'Food ID not found'
+      this.render()
+      return
+    }
+
+    this.loading = true
+    this.render()
+
+    try {
+      if (this.servingFormData.id) {
+        // Update existing serving
+        await servingService.updateServing(this.servingFormData.id, {
+          name: this.servingFormData.name,
+          grams: this.servingFormData.grams,
+          is_default: this.servingFormData.is_default
+        })
+      } else {
+        // Create new serving
+        await servingService.createServing({
+          food_id: foodId,
+          name: this.servingFormData.name,
+          grams: this.servingFormData.grams,
+          is_default: this.servingFormData.is_default
+        })
+      }
+
+      // Refresh servings list
+      this.servings = await servingService.getServingsForFood(foodId)
+      this.servingFormData = { id: null, name: '', grams: 100, is_default: false }
+      
+      // Refresh the log to get updated serving data
+      this.log = await logService.getLogById(this.log.id)
+      
+      if (this.onSave) this.onSave()
+    } catch (error) {
+      console.error('Failed to save serving:', error)
+      this.error = 'Failed to save serving'
+      this.loading = false
+      this.render()
+    }
+  }
+
+  async handleDeleteServing(servingId) {
+    this.loading = true
+    this.render()
+
+    try {
+      await servingService.deleteServing(servingId)
+      
+      // Ensure we have a valid food ID
+      const foodId = this.food?.id || this.log?.foods?.id
+      this.servings = await servingService.getServingsForFood(foodId)
+      
+      // Refresh the log
+      this.log = await logService.getLogById(this.log.id)
+      
+      if (this.onSave) this.onSave()
+    } catch (error) {
+      console.error('Failed to delete serving:', error)
+      this.error = 'Failed to delete serving'
+      this.loading = false
+      this.render()
+    }
+  }
+
+  async handleSetDefaultServing(servingId) {
+    this.loading = true
+    this.render()
+
+    try {
+      // Ensure we have a valid food ID
+      const foodId = this.food?.id || this.log?.foods?.id
+      await servingService.setDefaultServing(foodId, servingId)
+      this.servings = await servingService.getServingsForFood(foodId)
+      
+      // Refresh the log
+      this.log = await logService.getLogById(this.log.id)
+      
+      if (this.onSave) this.onSave()
+    } catch (error) {
+      console.error('Failed to set default serving:', error)
+      this.error = 'Failed to set default serving'
+      this.loading = false
+      this.render()
+    }
+  }
+
+  renderServingsManageForm() {
+    const isAdding = !this.servingFormData.id
+    
+    return `
+      <div class="modal-overlay" id="edit-modal-overlay">
+        <div class="modal-content edit-log-modal">
+          <div class="modal-header">
+            <button class="back-btn" id="servings-back-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              Back
+            </button>
+            <h3>Manage Servings</h3>
+            <button class="btn btn-icon" id="edit-modal-close" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="modal-body">
+            <p class="text-secondary mb-md">Add or edit predefined serving sizes for this food.</p>
+            
+            <!-- Existing Servings List -->
+            ${this.servings.length > 0 ? `
+              <div class="serving-list">
+                ${this.servings.map(s => `
+                  <div class="serving-item">
+                    <div class="serving-item-info">
+                      <div class="serving-item-name">
+                        ${s.name}
+                        ${s.is_default ? '<span class="default-badge">Default</span>' : ''}
+                      </div>
+                      <div class="serving-item-grams">${s.grams}g</div>
+                    </div>
+                    <div class="serving-item-actions">
+                      ${!s.is_default ? `
+                        <button class="set-default-btn" data-serving-id="${s.id}" title="Set as default">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        </button>
+                      ` : ''}
+                      <button class="edit-serving-btn" data-serving-id="${s.id}" title="Edit">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                      </button>
+                      <button class="delete-serving-btn" data-serving-id="${s.id}" title="Delete">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <p class="text-secondary text-center p-md">No custom servings yet.</p>
+            `}
+            
+            <!-- Add/Edit Serving Form -->
+            <div class="add-serving-form">
+              <h4>${isAdding ? 'Add New Serving' : 'Edit Serving'}</h4>
+              <div class="form-row">
+                <input type="text" id="serving-name" class="form-input" placeholder="Name (e.g., cup, piece)" value="${this.servingFormData.name || ''}" />
+                <input type="number" id="serving-grams" class="form-input" placeholder="Grams" value="${this.servingFormData.grams || 100}" step="0.1" min="0" style="max-width: 100px;" />
+              </div>
+              <div class="add-serving-form-actions">
+                ${!isAdding ? `
+                  <button class="btn btn-secondary" id="cancel-add-serving">Cancel</button>
+                ` : ''}
+                <button class="btn btn-primary" id="save-serving-btn">${isAdding ? 'Add' : 'Update'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `
   }
 
   async handleDelete() {
@@ -640,6 +1231,157 @@ class EditLogModal {
         
         .btn-icon:hover {
           color: var(--md-on-surface);
+        }
+        
+        .food-actions-row {
+          display: flex;
+          gap: var(--md-spacing-sm);
+          margin-bottom: var(--md-spacing-lg);
+        }
+        
+        .food-actions-row .btn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: var(--md-spacing-xs);
+        }
+        
+        .food-actions-row .btn svg {
+          flex-shrink: 0;
+        }
+        
+        /* Food Edit Form Styles */
+        .food-edit-section {
+          margin-bottom: var(--md-spacing-lg);
+        }
+        
+        .food-edit-section h4 {
+          font-size: 1rem;
+          font-weight: 500;
+          margin-bottom: var(--md-spacing-md);
+          color: var(--md-on-surface);
+        }
+        
+        .serving-list {
+          margin-top: var(--md-spacing-md);
+        }
+        
+        .serving-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: var(--md-spacing-sm) var(--md-spacing-md);
+          background: var(--md-surface-variant);
+          border-radius: var(--md-shape-small);
+          margin-bottom: var(--md-spacing-xs);
+        }
+        
+        .serving-item-info {
+          flex: 1;
+        }
+        
+        .serving-item-name {
+          font-weight: 500;
+        }
+        
+        .serving-item-grams {
+          font-size: 0.75rem;
+          color: var(--md-text-secondary);
+        }
+        
+        .serving-item-actions {
+          display: flex;
+          gap: var(--md-spacing-xs);
+        }
+        
+        .serving-item-actions button {
+          padding: 4px 8px;
+          background: transparent;
+          border: none;
+          color: var(--md-text-secondary);
+          cursor: pointer;
+          border-radius: var(--md-shape-small);
+        }
+        
+        .serving-item-actions button:hover {
+          background: var(--md-surface);
+          color: var(--md-on-surface);
+        }
+        
+        .default-badge {
+          font-size: 0.625rem;
+          background: var(--md-primary);
+          color: var(--md-on-primary);
+          padding: 2px 6px;
+          border-radius: 10px;
+          margin-left: var(--md-spacing-xs);
+        }
+        
+        .add-serving-form {
+          margin-top: var(--md-spacing-md);
+          padding: var(--md-spacing-md);
+          background: var(--md-surface-variant);
+          border-radius: var(--md-shape-medium);
+        }
+        
+        .add-serving-form .form-row {
+          display: flex;
+          gap: var(--md-spacing-sm);
+          margin-bottom: var(--md-spacing-sm);
+        }
+        
+        .add-serving-form .form-row input {
+          flex: 1;
+        }
+        
+        .add-serving-form-actions {
+          display: flex;
+          gap: var(--md-spacing-sm);
+          justify-content: flex-end;
+        }
+        
+        .modal-header-with-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        
+        .modal-header-with-actions h3 {
+          flex: 1;
+        }
+        
+        .back-btn {
+          display: flex;
+          align-items: center;
+          gap: var(--md-spacing-xs);
+          padding: var(--md-spacing-xs) var(--md-spacing-sm);
+          background: transparent;
+          border: none;
+          color: var(--md-primary);
+          cursor: pointer;
+          font-size: 0.875rem;
+        }
+        
+        .back-btn:hover {
+          background: var(--md-surface-variant);
+          border-radius: var(--md-shape-small);
+        }
+        
+        .form-group {
+          margin-bottom: var(--md-spacing-md);
+        }
+        
+        .form-group .form-input {
+          width: 100%;
+        }
+        
+        .mb-md {
+          margin-bottom: var(--md-spacing-md);
+        }
+        
+        .p-md {
+          padding: var(--md-spacing-md);
         }
       `
       document.head.appendChild(style)
